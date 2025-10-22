@@ -128,8 +128,8 @@ if __name__ == "__main__":
                         help='if True, load a pretrained model and do visualization exps')
     parser.add_argument('--ensemble', action='store_true', default=False,
                         help='if True, load a series of model checkpoints and ensemble the results')
-    parser.add_argument('--standard-rating', action='store_true', default=False,
-                        help='if True, maps all ratings to standard 1, 2, 3, 4, 5 before training')
+    # parser.add_argument('--standard-rating', action='store_true', default=False,
+    #                     help='if True, maps all ratings to standard 1, 2, 3, 4, 5 before training')
     # sparsity experiment settings
     parser.add_argument('--ratio', type=float, default=1.0,
                         help="For ml datasets, if ratio < 1, downsample training data to the\
@@ -150,14 +150,15 @@ if __name__ == "__main__":
     if args.max_nodes_per_hop is not None:
         args.max_nodes_per_hop = int(args.max_nodes_per_hop)
 
-    rating_map, post_rating_map = None, None
-    if args.standard_rating:
-        if args.data_name in ['flixster', 'ml_10m']: # original 0.5, 1, ..., 5
-            rating_map = {x: int(math.ceil(x)) for x in np.arange(0.5, 5.01, 0.5).tolist()}
-        elif args.data_name == 'yahoo_music':  # original 1, 2, ..., 100
-            rating_map = {x: (x-1)//20+1 for x in range(1, 101)}
-        else:
-            rating_map = None
+    # Use Interaction Data INSTEAD
+    # rating_map, post_rating_map = None, None
+    # if args.standard_rating:
+    #     if args.data_name in ['flixster', 'ml_10m']: # original 0.5, 1, ..., 5
+    #         rating_map = {x: int(math.ceil(x)) for x in np.arange(0.5, 5.01, 0.5).tolist()}
+    #     elif args.data_name == 'yahoo_music':  # original 1, 2, ..., 100
+    #         rating_map = {x: (x-1)//20+1 for x in range(1, 101)}
+    #     else:
+    #         rating_map = None
 
     if args.transfer:
         if args.data_name in ['flixster', 'ml_10m']: # original 0.5, 1, ..., 5
@@ -225,30 +226,39 @@ if __name__ == "__main__":
     else:
         datasplit_path = 'raw_data/' + args.data_name + '/nofeatures.pickle'
 
-    if args.data_name in ['flixster', 'douban', 'yahoo_music']:
+    # if args.data_name in ['flixster', 'douban', 'yahoo_music']:
+    #     (
+    #         u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
+    #         val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
+    #         test_v_indices, class_values
+    #     ) = load_data_monti(args.data_name, args.testing, rating_map, post_rating_map)
+    # elif args.data_name == 'ml_100k':
+    #     print("Using official MovieLens split u1.base/u1.test with 20% validation...")
+    #     (
+    #         u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
+    #         val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
+    #         test_v_indices, class_values
+    #     ) = load_official_trainvaltest_split(
+    #         args.data_name, args.testing, rating_map, post_rating_map, args.ratio
+    #     )
+    # else:
+    #     (
+    #         u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
+    #         val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
+    #         test_v_indices, class_values
+    #     ) = create_trainvaltest_split(
+    #         args.data_name, 1234, args.testing, datasplit_path, True, True, rating_map, 
+    #         post_rating_map, args.ratio
+    #     )
+    if args.data_name in ['lastfm']:
+        train_file = f"raw_data/{args.data_name}/{args.data_name}.train.inter"
+        val_file = f"raw_data/{args.data_name}/{args.data_name}.valid.inter"
+        test_file = f"raw_data/{args.data_name}/{args.data_name}.test.inter"
         (
             u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
             val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
             test_v_indices, class_values
-        ) = load_data_monti(args.data_name, args.testing, rating_map, post_rating_map)
-    elif args.data_name == 'ml_100k':
-        print("Using official MovieLens split u1.base/u1.test with 20% validation...")
-        (
-            u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
-            val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
-            test_v_indices, class_values
-        ) = load_official_trainvaltest_split(
-            args.data_name, args.testing, rating_map, post_rating_map, args.ratio
-        )
-    else:
-        (
-            u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
-            val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, 
-            test_v_indices, class_values
-        ) = create_trainvaltest_split(
-            args.data_name, 1234, args.testing, datasplit_path, True, True, rating_map, 
-            post_rating_map, args.ratio
-        )
+        ) = preprocess_interaction_data(train_file, val_file, test_file)
 
     print('All ratings are:')
     print(class_values)
@@ -386,11 +396,9 @@ if __name__ == "__main__":
         else:
             num_relations = len(class_values)
             multiply_by = 1
-        model = IGMC(
+        model = Interaction_IGMC(
             train_graphs, 
             latent_dim=[32, 32, 32, 32], 
-            num_relations=num_relations, 
-            num_bases=4, 
             regression=True, 
             adj_dropout=args.adj_dropout, 
             force_undirected=args.force_undirected, 

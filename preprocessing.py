@@ -584,3 +584,87 @@ def load_official_trainvaltest_split(dataset, testing=False, rating_map=None, po
 
     return u_features, v_features, rating_mx_train, train_labels, u_train_idx, v_train_idx, \
         val_labels, u_val_idx, v_val_idx, test_labels, u_test_idx, v_test_idx, class_values
+
+def preprocess_interaction_data(train_file, val_file, test_file, ratio=1.0):
+    """
+    Preprocess interaction data for IGMC using the official splitting approach.
+
+    Args:
+        train_file (str): Path to the training data file.
+        val_file (str): Path to the validation data file.
+        test_file (str): Path to the testing data file.
+        ratio (float): Ratio of training data to use (default: 1.0, use all).
+
+    Returns:
+        u_features (csr_matrix): User feature matrix.
+        v_features (csr_matrix): Item feature matrix.
+        adj_train (csr_matrix): Training adjacency matrix.
+        train_labels (np.array): Training labels.
+        train_u_indices (np.array): Training user indices.
+        train_v_indices (np.array): Training item indices.
+        val_labels (np.array): Validation labels.
+        val_u_indices (np.array): Validation user indices.
+        val_v_indices (np.array): Validation item indices.
+        test_labels (np.array): Test labels.
+        test_u_indices (np.array): Test user indices.
+        test_v_indices (np.array): Test item indices.
+        class_values (np.array): Unique rating values.
+    """
+    # Load data from files
+    train_data = pd.read_csv(train_file, sep='\t', header=0, names=['user_id', 'item_id', 'rating'])
+    val_data = pd.read_csv(val_file, sep='\t', header=0, names=['user_id', 'item_id', 'rating'])
+    test_data = pd.read_csv(test_file, sep='\t', header=0, names=['user_id', 'item_id', 'rating'])
+
+    train_data_array = train_data.values.tolist()
+    train_data_array = np.array(train_data_array)
+    val_data_array = val_data.values.tolist()
+    val_data_array = np.array(val_data_array)
+    test_data_array = test_data.values.tolist()
+    test_data_array = np.array(test_data_array)
+
+    # Combine all data to map user_id and item_id to unique indices
+    data_array = np.concatenate([train_data_array, val_data_array, test_data_array], axis=0)
+    
+    user_ids = data_array[:, 0].astype(np.int32)
+    item_ids = data_array[:, 1].astype(np.int32)
+    ratings = np.zeros(data_array.shape[0], dtype=np.int32)
+    
+    # Map user_id and item_id to unique indices
+    user_ids, u_dict, num_users = map_data(user_ids)
+    item_ids, i_dict, num_items = map_data(item_ids)
+    
+    # Map user and item IDs in train, val, and test sets
+    train_u_indices = user_ids[:len(train_data)]
+    train_v_indices = item_ids[:len(train_data)]
+    val_u_indices = user_ids[len(train_data):len(train_data) + len(val_data)]
+    val_v_indices = item_ids[len(train_data):len(train_data) + len(val_data)]
+    test_u_indices = user_ids[len(train_data) + len(val_data):]
+    test_v_indices = item_ids[len(train_data) + len(val_data):]
+
+    # Extract ratings for train, val, and test sets
+    train_labels = ratings[:len(train_data)]
+    val_labels = ratings[len(train_data):len(train_data) + len(val_data)]
+    test_labels = ratings[len(train_data) + len(val_data):]
+
+    # Apply ratio to training data (if specified)
+    if ratio < 1.0:
+        num_train = int(len(train_labels) * ratio)
+        train_u_indices = train_u_indices[:num_train]
+        train_v_indices = train_v_indices[:num_train]
+        train_labels = train_labels[:num_train]
+
+    # Create adjacency matrix for training data
+    adj_train = sp.csr_matrix((train_labels + 1, (train_u_indices, train_v_indices)),
+                              shape=(num_users, num_items), dtype=np.float32)
+
+    # Create user and item feature matrices (identity matrices)
+    u_features = sp.identity(num_users, format='csr', dtype=np.float32)
+    v_features = sp.identity(num_items, format='csr', dtype=np.float32)
+
+    # Get unique rating values
+    class_values = np.sort(np.unique(ratings))
+
+    # Return processed data
+    return (u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices,
+            val_labels, val_u_indices, val_v_indices, test_labels, test_u_indices, test_v_indices,
+            class_values)
