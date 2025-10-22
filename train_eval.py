@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import tensor
 from torch.optim import Adam
 from sklearn.model_selection import StratifiedKFold
-from torch_geometric.data import DataLoader, DenseDataLoader as DenseLoader
+from torch_geometric.loader import DataLoader, DenseDataLoader as DenseLoader
 from tqdm import tqdm
 import pdb
 import matplotlib
@@ -18,7 +18,6 @@ import matplotlib.pyplot as plt
 from util_functions import PyGGraph_to_nx
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 
 def train_multiple_epochs(train_dataset,
                           test_dataset,
@@ -41,12 +40,14 @@ def train_multiple_epochs(train_dataset,
         num_workers = mp.cpu_count()
     else:
         num_workers = 2
+    num_workers = 0 # AVOID DEADLOCK ON WINDOWS
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, 
                               num_workers=num_workers)
     if test_dataset.__class__.__name__ == 'MyDynamicDataset':
         num_workers = mp.cpu_count()
     else:
         num_workers = 2
+    num_workers = 0 # AVOID DEADLOCK ON WINDOWS
     test_loader = DataLoader(test_dataset, batch_size, shuffle=False, 
                              num_workers=num_workers)
 
